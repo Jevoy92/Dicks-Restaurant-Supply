@@ -1,0 +1,133 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - email: string (required)
+    //   - displayName: string (optional)
+    //   - createdAt: string (required, immutable)
+    //
+    // Collection: users/{userId}/history
+    // Document ID: {historyId}
+    // Fields:
+    //   - id: string (required, immutable)
+    //   - userId: string (required, immutable)
+    //   - timestamp: number (required)
+    //   - input: string (required)
+    //   - location: string (required)
+    //   - output: string (required)
+    //
+    // Collection: users/{userId}/monthPlans
+    // Document ID: {planId}
+    // Fields:
+    //   - id: string (required, immutable)
+    //   - userId: string (required, immutable)
+    //   - date: string (required)
+    //   - platform: string (required)
+    //   - type: string (required)
+    //   - title: string (required)
+    //   - time: string (required)
+    //   - status: string (required)
+    //   - content: string (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 100 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 150 &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             data.createdAt is string && isValidDateString(data.createdAt);
+    }
+
+    function isValidHistoryItem(data) {
+      return hasRequiredFields(['id', 'userId', 'timestamp', 'input', 'location', 'output']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.timestamp is number &&
+             data.input is string && data.input.size() < 10000 &&
+             data.location is string && data.location.size() < 100 &&
+             data.output is string && data.output.size() < 100000;
+    }
+
+    function isValidPlannedPost(data) {
+      return hasRequiredFields(['id', 'userId', 'date', 'platform', 'type', 'title', 'time', 'status']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.date is string && isValidDateString(data.date) &&
+             data.platform is string && data.platform.size() < 50 &&
+             data.type is string && data.type.size() < 50 &&
+             data.title is string && data.title.size() < 500 &&
+             data.time is string && data.time.size() < 50 &&
+             data.status is string && data.status.size() < 50 &&
+             (!('content' in data) || (data.content is string && data.content.size() < 100000));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.uid == userId;
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    request.resource.data.uid == resource.data.uid && 
+                    request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(userId);
+
+      match /history/{historyId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidHistoryItem(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidHistoryItem(request.resource.data) && 
+                      request.resource.data.id == resource.data.id && 
+                      request.resource.data.userId == resource.data.userId;
+        allow delete: if isOwner(userId);
+      }
+
+      match /monthPlans/{planId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidPlannedPost(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidPlannedPost(request.resource.data) && 
+                      request.resource.data.id == resource.data.id && 
+                      request.resource.data.userId == resource.data.userId;
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

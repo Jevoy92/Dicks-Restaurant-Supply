@@ -1,0 +1,110 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user information and preferences.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "HistoryItem": {
+      "title": "History Item",
+      "description": "A generated piece of content saved by the user.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "input": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string",
+          "description": "JSON stringified ContentOutput"
+        }
+      },
+      "required": ["id", "userId", "timestamp", "input", "location", "output"]
+    },
+    "PlannedPost": {
+      "title": "Planned Post",
+      "description": "A post scheduled on the calendar.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "time": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "userId", "date", "platform", "type", "title", "time", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "User profiles."
+    },
+    "/users/{userId}/history/{historyId}": {
+      "schema": {
+        "$ref": "#/entities/HistoryItem"
+      },
+      "description": "User's generated content history."
+    },
+    "/users/{userId}/monthPlans/{planId}": {
+      "schema": {
+        "$ref": "#/entities/PlannedPost"
+      },
+      "description": "User's planned posts for the calendar."
+    }
+  }
+}
