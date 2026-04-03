@@ -64,7 +64,7 @@ Tone: Professional, authoritative, helpful, and efficient.`;
 export async function generateContent(input: string): Promise<ContentOutput> {
   return withRetry(async () => {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-12-2025",
+      model: "gemini-3-flash-preview",
       contents: `Transform this business activity into a full content strategy for Dick's Restaurant Supply: "${input}"`,
       config: {
         systemInstruction: `${SYSTEM_PROMPT}
@@ -103,13 +103,14 @@ export async function generateImage(prompt: string): Promise<string> {
   return withRetry(async () => {
     const imageAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
     const response = await imageAi.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-3-flash-image-preview',
       contents: {
         parts: [{ text: prompt }],
       },
       config: {
         imageConfig: {
           aspectRatio: "16:9",
+          imageSize: "1K"
         },
       },
     });
@@ -128,7 +129,7 @@ export async function generateImage(prompt: string): Promise<string> {
 export async function generateDirections(input: string): Promise<string[]> {
   return withRetry(async () => {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-12-2025",
+      model: "gemini-3-flash-preview",
       contents: `Provide 3 distinct strategic content directions for this activity at Dick's Restaurant Supply: "${input}"`,
       config: {
         systemInstruction: `${SYSTEM_PROMPT} Provide 3 short, punchy strategic directions. Return as a JSON array of strings.`,
@@ -153,7 +154,7 @@ export async function getInitialSuggestions(userName: string | null = null, hist
     const greeting = userName ? `Personalize the suggestions for ${userName}. ` : '';
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-12-2025",
+      model: "gemini-3-flash-preview",
       contents: `${greeting}Based on the current content and products at ${DICKS_URL}, suggest 6 diverse "Recent Activity" starters that the team could use to generate content today. 
       Cover different categories like Seasonal, Maintenance, Upgrades, Operations, Trends, and Customer Success.${historyContext}`,
       config: {
@@ -196,7 +197,7 @@ export interface PlannedPost {
 export async function generateSinglePost(post: PlannedPost, tone: string, audience: string, location: string): Promise<string> {
   return withRetry(async () => {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-12-2025",
+      model: "gemini-3-flash-preview",
       contents: `Write a ${post.platform} post for Dick's Restaurant Supply.
       Post Type: ${post.type}
       Topic/Title: ${post.title}
@@ -219,7 +220,7 @@ export async function generateSinglePost(post: PlannedPost, tone: string, audien
 export async function generateMonthPlan(focus: string, location: string): Promise<PlannedPost[]> {
   return withRetry(async () => {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-12-2025",
+      model: "gemini-3-flash-preview",
       contents: `Generate a 30-day content calendar for Dick's Restaurant Supply focusing on "${focus}" at the ${location} location. 
       Spread the posts across YouTube, LinkedIn, Instagram, and Facebook. 
       Include a mix of videos, articles, carousels, and photos.`,

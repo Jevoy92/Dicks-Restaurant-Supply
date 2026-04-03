@@ -56,9 +56,8 @@ import {
   Suggestion,
   PlannedPost
 } from './lib/gemini';
-import { auth, db, signInWithGoogle, logOut } from './lib/firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, query, orderBy, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+// @ts-ignore
+import logo from './lib/dickslogo.png';
 
 type Tab = 'youtube' | 'short' | 'blog' | 'social' | 'plan' | 'visuals';
 
@@ -123,9 +122,6 @@ const DraggablePost = ({ post, onClick, getPlatformIcon }: any) => {
 };
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
@@ -163,88 +159,25 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      setIsAuthReady(true);
-      if (currentUser) {
-        // Save user profile to DB
-        try {
-          await setDoc(doc(db, 'users', currentUser.uid), {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            createdAt: new Date().toISOString()
-          }, { merge: true });
-        } catch (e) {
-          console.error("Error saving user profile", e);
-        }
+    // Load history and plan from local storage
+    const savedHistory = localStorage.getItem('dicks_content_history');
+    if (savedHistory) {
+      try {
+        setHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error('Failed to parse history', e);
       }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!isAuthReady) return;
-    
-    if (user) {
-      // Load history from Firestore
-      const historyRef = collection(db, `users/${user.uid}/history`);
-      const qHistory = query(historyRef, orderBy('timestamp', 'desc'));
-      const unsubHistory = onSnapshot(qHistory, (snapshot) => {
-        const historyData: HistoryItem[] = [];
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          historyData.push({
-            id: data.id,
-            timestamp: data.timestamp,
-            input: data.input,
-            location: data.location,
-            output: JSON.parse(data.output)
-          });
-        });
-        setHistory(historyData);
-        setHistoryLoaded(true);
-      }, (error) => {
-        console.error("Firestore history error", error);
-      });
-
-      // Load month plan from Firestore
-      const planRef = collection(db, `users/${user.uid}/monthPlans`);
-      const unsubPlan = onSnapshot(planRef, (snapshot) => {
-        const planData: PlannedPost[] = [];
-        snapshot.forEach(doc => {
-          planData.push(doc.data() as PlannedPost);
-        });
-        setMonthPlan(planData);
-      }, (error) => {
-        console.error("Firestore plan error", error);
-      });
-
-      return () => {
-        unsubHistory();
-        unsubPlan();
-      };
-    } else {
-      // Fallback to local storage if not logged in
-      const savedHistory = localStorage.getItem('dicks_content_history');
-      if (savedHistory) {
-        try {
-          setHistory(JSON.parse(savedHistory));
-        } catch (e) {
-          console.error('Failed to parse history', e);
-        }
-      }
-      const savedPlan = localStorage.getItem('dicks_month_plan');
-      if (savedPlan) {
-        try {
-          setMonthPlan(JSON.parse(savedPlan));
-        } catch (e) {
-          console.error('Failed to parse month plan', e);
-        }
-      }
-      setHistoryLoaded(true);
     }
-  }, [user, isAuthReady]);
+    const savedPlan = localStorage.getItem('dicks_month_plan');
+    if (savedPlan) {
+      try {
+        setMonthPlan(JSON.parse(savedPlan));
+      } catch (e) {
+        console.error('Failed to parse month plan', e);
+      }
+    }
+    setHistoryLoaded(true);
+  }, []);
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -253,16 +186,15 @@ export default function App() {
     };
     checkApiKey();
     
-    // Pass history to loadSuggestions to make it dynamic
     loadSuggestions();
-  }, [historyLoaded]); // Re-load suggestions when history is loaded
+  }, [historyLoaded]);
 
   useEffect(() => {
-    if (historyLoaded && !user) {
+    if (historyLoaded) {
       localStorage.setItem('dicks_content_history', JSON.stringify(history));
       localStorage.setItem('dicks_month_plan', JSON.stringify(monthPlan));
     }
-  }, [history, monthPlan, historyLoaded, user]);
+  }, [history, monthPlan, historyLoaded]);
 
   const handleOpenKeySelector = async () => {
     await (window as any).aistudio?.openSelectKey();
@@ -274,22 +206,7 @@ export default function App() {
     setIsGeneratingMonthPlan(true);
     try {
       const plan = await generateMonthPlan(monthPlanFocus, selectedLocation);
-      
-      if (user) {
-        try {
-          await Promise.all(plan.map(post => 
-            setDoc(doc(db, `users/${user.uid}/monthPlans`, post.id), {
-              ...post,
-              userId: user.uid
-            })
-          ));
-        } catch (e) {
-          console.error("Failed to save month plan to Firestore", e);
-        }
-      } else {
-        setMonthPlan(plan);
-      }
-      
+      setMonthPlan(plan);
       setView('calendar');
       setShowMonthPlanModal(false);
       setMonthPlanFocus('');
@@ -309,19 +226,7 @@ export default function App() {
       const content = await generateSinglePost(selectedPost, postTone, postAudience, selectedLocation);
       const updatedPost = { ...selectedPost, content, status: 'in review' as const };
       
-      if (user) {
-        try {
-          await setDoc(doc(db, `users/${user.uid}/monthPlans`, updatedPost.id), {
-            ...updatedPost,
-            userId: user.uid
-          });
-        } catch (e) {
-          console.error("Failed to update post in Firestore", e);
-        }
-      } else {
-        // Update in month plan
-        setMonthPlan(prev => prev.map(p => p.id === selectedPost.id ? updatedPost : p));
-      }
+      setMonthPlan(prev => prev.map(p => p.id === selectedPost.id ? updatedPost : p));
       
       setSelectedPost(updatedPost);
       toast.success("Post content generated!");
@@ -351,19 +256,7 @@ export default function App() {
       }
     };
     
-    if (user) {
-      try {
-        await setDoc(doc(db, `users/${user.uid}/history`, newItem.id), {
-          ...newItem,
-          userId: user.uid,
-          output: JSON.stringify(newItem.output)
-        });
-      } catch (e) {
-        console.error("Failed to save to Firestore", e);
-      }
-    } else {
-      setHistory(prev => [newItem, ...prev].slice(0, 50));
-    }
+    setHistory(prev => [newItem, ...prev].slice(0, 50));
     toast.success("Saved to history!");
   };
 
@@ -375,7 +268,7 @@ export default function App() {
   const loadSuggestions = async () => {
     setSuggestionsLoading(true);
     try {
-      const res = await getInitialSuggestions(user?.displayName || null, history);
+      const res = await getInitialSuggestions(null, history);
       setSuggestions(res);
     } catch (error) {
       console.error(error);
@@ -421,19 +314,7 @@ export default function App() {
         output: res
       };
       
-      if (user) {
-        try {
-          await setDoc(doc(db, `users/${user.uid}/history`, newItem.id), {
-            ...newItem,
-            userId: user.uid,
-            output: JSON.stringify(newItem.output)
-          });
-        } catch (e) {
-          console.error("Failed to save to Firestore", e);
-        }
-      } else {
-        setHistory(prev => [newItem, ...prev].slice(0, 50)); // Keep last 50
-      }
+      setHistory(prev => [newItem, ...prev].slice(0, 50)); // Keep last 50
     } catch (error) {
       console.error(error);
     } finally {
@@ -452,16 +333,7 @@ export default function App() {
 
   const deleteFromHistory = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (user) {
-      try {
-        await deleteDoc(doc(db, `users/${user.uid}/history`, id));
-      } catch (error) {
-        console.error("Failed to delete from Firestore", error);
-        toast.error("Failed to delete item.");
-      }
-    } else {
-      setHistory(prev => prev.filter(item => item.id !== id));
-    }
+    setHistory(prev => prev.filter(item => item.id !== id));
   };
 
   const handleSuggestionClick = (suggestion: Suggestion) => {
@@ -574,20 +446,9 @@ export default function App() {
       if (postToMove && postToMove.date !== newDateStr) {
         const updatedPost = { ...postToMove, date: newDateStr };
         
-        if (user) {
-          try {
-            await setDoc(doc(db, `users/${user.uid}/monthPlans`, updatedPost.id), {
-              ...updatedPost,
-              userId: user.uid
-            });
-          } catch (e) {
-            console.error("Failed to update post date in Firestore", e);
-          }
-        } else {
-          setMonthPlan(prev => prev.map(p => 
-            p.id === postId ? updatedPost : p
-          ));
-        }
+        setMonthPlan(prev => prev.map(p => 
+          p.id === postId ? updatedPost : p
+        ));
         toast.success("Post rescheduled");
       }
     };
@@ -617,22 +478,43 @@ export default function App() {
     return (
       <div className="flex-1 flex flex-col bg-white overflow-hidden">
         <header className="p-6 border-b border-slate-200 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => navigateMonth(-1)}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-all"
-              >
-                <ChevronLeft className="w-5 h-5 text-slate-600" />
-              </button>
-              <button 
-                onClick={() => navigateMonth(1)}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-all"
-              >
-                <ChevronRight className="w-5 h-5 text-slate-600" />
-              </button>
+          <div className="flex items-center gap-6">
+            <div 
+              className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => {
+                setView('engine');
+                setDirections([]);
+                setOutput(null);
+              }}
+            >
+              <img 
+                src={logo} 
+                alt="Dick's Restaurant Supply" 
+                className="h-8 w-auto"
+                referrerPolicy="no-referrer"
+              />
+              <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+              <h1 className="text-lg font-black tracking-tighter text-slate-900 hidden sm:block">
+                CONTENT<span className="text-brand-primary">ENGINE</span>
+              </h1>
             </div>
-            <h2 className="text-xl font-bold text-slate-900">{monthName} {year}</h2>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => navigateMonth(-1)}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-all"
+                >
+                  <ChevronLeft className="w-5 h-5 text-slate-600" />
+                </button>
+                <button 
+                  onClick={() => navigateMonth(1)}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-all"
+                >
+                  <ChevronRight className="w-5 h-5 text-slate-600" />
+                </button>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900">{monthName} {year}</h2>
+            </div>
           </div>
           <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
             {(['Month', 'Week', 'List'] as const).map(v => (
@@ -741,7 +623,7 @@ export default function App() {
             className="block w-full text-left"
           >
             <img 
-              src="/dickslogo.png" 
+              src={logo} 
               alt="Dick's Restaurant Supply" 
               className="w-full h-auto brightness-0 invert"
               referrerPolicy="no-referrer"
@@ -801,45 +683,8 @@ export default function App() {
               <Sparkles className="w-5 h-5" />
               Generate Month Plan
             </button>
-            <button 
-              className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-base font-bold text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-all"
-            >
-              <Settings className="w-5 h-5" />
-              Settings
-            </button>
           </div>
         </nav>
-
-        {/* User Profile / Auth */}
-        <div className="p-6 border-t border-slate-800">
-          {user ? (
-            <div className="flex items-center justify-between gap-3 bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center text-white font-bold">
-                  {user.displayName?.[0] || user.email?.[0]}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-base font-bold text-white truncate max-w-[120px]">{user.displayName || 'User'}</span>
-                  <span className="text-xs text-slate-500 truncate max-w-[120px]">{user.email}</span>
-                </div>
-              </div>
-              <button 
-                onClick={logOut}
-                className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <button 
-              onClick={signInWithGoogle}
-              className="w-full py-3 bg-white text-slate-900 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-100 transition-all"
-            >
-              <Users className="w-5 h-5" />
-              Sign In
-            </button>
-          )}
-        </div>
       </aside>
 
       {/* Main Content Area */}
@@ -941,25 +786,25 @@ export default function App() {
               <ArrowRight className="w-6 h-6 rotate-180" />
             </button>
           )}
-          <button 
-            onClick={() => {
-              setView('engine');
-              setDirections([]);
-              setOutput(null);
-            }}
-            className="flex items-center gap-4 group"
-          >
-            <img 
-              src="/dickslogo.png" 
-              alt="Dick's Restaurant Supply" 
-              className="h-10 w-auto group-hover:scale-105 transition-transform"
-              referrerPolicy="no-referrer"
-            />
-            <div className="h-8 w-px bg-slate-200 hidden sm:block" />
-            <h1 className="text-2xl font-black tracking-tighter text-slate-900 hidden sm:block">
-              CONTENT<span className="text-brand-primary">ENGINE</span>
-            </h1>
-          </button>
+            <div 
+              className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => {
+                setView('engine');
+                setDirections([]);
+                setOutput(null);
+              }}
+            >
+              <img 
+                src={logo} 
+                alt="Dick's Restaurant Supply" 
+                className="h-10 w-auto group-hover:scale-105 transition-transform"
+                referrerPolicy="no-referrer"
+              />
+              <div className="h-8 w-px bg-slate-200 hidden sm:block" />
+              <h1 className="text-2xl font-black tracking-tighter text-slate-900 hidden sm:block">
+                CONTENT<span className="text-brand-primary">ENGINE</span>
+              </h1>
+            </div>
         </div>
         
         <div className="hidden lg:flex items-center gap-8">
@@ -980,24 +825,6 @@ export default function App() {
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
               Live Context Active
             </div>
-            {user ? (
-              <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
-                <div className="text-right hidden xl:block">
-                  <p className="text-sm font-bold text-slate-900">{user.displayName}</p>
-                  <p className="text-xs text-slate-500">Administrator</p>
-                </div>
-                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center border border-slate-200">
-                  <Users className="w-5 h-5 text-slate-600" />
-                </div>
-              </div>
-            ) : (
-              <button 
-                onClick={signInWithGoogle}
-                className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-slate-800 transition-all"
-              >
-                Sign In
-              </button>
-            )}
           </div>
         </div>
       </header>
@@ -1011,7 +838,7 @@ export default function App() {
               Real-Time Decision Infrastructure
             </div>
             <h2 className="text-4xl font-bold text-slate-900">
-              {user ? `Hello ${user.displayName?.split(' ')[0] || 'there'}, what's happening at ${selectedLocation}?` : `What's happening at ${selectedLocation}?`}
+              What's happening at {selectedLocation}?
             </h2>
             <p className="text-lg text-slate-500 max-w-2xl">
               Turn any daily activity into a full content department in a button. 
@@ -1466,7 +1293,7 @@ export default function App() {
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl max-h-[90vh] bg-white rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden"
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-7xl max-h-[95vh] bg-white rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden"
         >
           <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
             <div className="flex items-center gap-4">
